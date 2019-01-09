@@ -1,0 +1,21 @@
+{
+  "license": "AGPL-3.0",
+  "name": "purescript-tables",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "output",
+    "result"
+  ],
+  "dependencies": {
+    "purescript-prelude": "^4.1.0"
+  },
+  "devDependencies": {
+    "purescript-psci-support": "^4.0.0"
+  },
+  "repository": {
+      "type": "git",
+      "url": "https://github.com/colehaus/purescript-tables.git"
+  }
+}

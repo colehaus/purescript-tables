@@ -6,6 +6,7 @@ import Data.Either (Either(..))
 import Data.Function (on)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
+import Data.List (List)
 import Data.List as List
 import Data.List.NonEmpty (NonEmptyList)
 import Data.List.NonEmpty as NEList
@@ -13,7 +14,7 @@ import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe)
 import Data.Maybe as Maybe
-import Data.Tuple (Tuple)
+import Data.Tuple (Tuple(..))
 import Data.Tuple as Tuple
 import Data.Set (Set)
 import Data.Set as Set
@@ -53,11 +54,51 @@ valid (MkTable { cells, mkColumn, mkRow }) =
   then Right unit
   else Left <<< Set.fromFoldable $ badColumns <> badRows
   where
-    badColumns =
-      map (\cs -> MkBadColumn (Tuple.snd <<< Tuple.fst <<< NEList.head $ cs) (Tuple.snd <$> cs)) <<<
-      List.filter (Maybe.isNothing <<< mkColumn <<< map Tuple.snd) $ columns
-    badRows =
-      map (\cs -> MkBadRow (Tuple.fst <<< Tuple.fst <<< NEList.head $ cs) (Tuple.snd <$> cs)) <<<
-      List.filter (Maybe.isNothing <<< mkRow <<< map Tuple.snd) $ rows
-    columns = List.groupBy ((==) `on` (Tuple.snd <<< Tuple.fst)) <<< List.sortBy (compare `on` (Tuple.swap <<< Tuple.fst)) <<< Map.toUnfoldable $ cells
-    rows = List.groupBy ((==) `on` (Tuple.fst <<< Tuple.fst)) <<< List.sortBy (compare `on` Tuple.fst) <<< Map.toUnfoldable $ cells
+    badColumns = bad MkBadColumn columnId mkColumn $ vectors columnId columnSort cells
+    badRows = bad MkBadRow rowId mkRow $ vectors rowId rowSort cells
+    bad ::
+      forall e ide c id v.
+      (ide -> NonEmptyList c -> e) ->
+      (Tuple id c -> ide) ->
+      (NonEmptyList c -> Maybe v) ->
+      List (NonEmptyList (Tuple id c)) ->
+      List e
+    bad mkErr proj mkVec =
+      map (\cs -> mkErr (proj <<< NEList.head $ cs) (Tuple.snd <$> cs)) <<<
+      List.filter (Maybe.isNothing <<< mkVec <<< map Tuple.snd)
+
+vectors ::
+  forall ide idc c id.
+  Eq ide => Ord idc =>
+  (Tuple id c -> ide) -> (Tuple id c -> idc) -> Map id c -> List (NonEmptyList (Tuple id c))
+vectors projEq projComp cells =
+  List.groupBy ((==) `on` projEq) <<<
+  List.sortBy (compare `on` projComp) <<<
+  Map.toUnfoldable $
+  cells
+
+columnId :: forall r c a. Tuple (Tuple r c) a -> c
+columnId (Tuple (Tuple _ c) _) = c
+
+columnSort :: forall r c a. Tuple (Tuple r c) a -> Tuple c r
+columnSort (Tuple id _) = Tuple.swap id
+
+rowId :: forall r c a. Tuple (Tuple r c) a -> r
+rowId (Tuple (Tuple r _) _) = r
+
+rowSort :: forall r c a. Tuple (Tuple r c) a -> Tuple r c
+rowSort (Tuple id _) = id
+
+vector ::
+  forall id vec rowId columnId cell.
+  Eq id =>
+  (Tuple (Tuple rowId columnId) cell -> id) ->
+  (NonEmptyList cell -> Maybe vec) ->
+  Map (Tuple rowId columnId) cell -> id -> Maybe vec
+vector proj mk cells id =
+  (mk <=< NEList.fromFoldable) <<<
+  map Tuple.snd <<<
+  List.filter (\c -> proj c == id) <<<
+  Map.toUnfoldable $
+  cells
+

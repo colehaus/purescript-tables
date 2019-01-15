@@ -1,4 +1,4 @@
-module Table.Internal where
+module Data.Table.Internal where
 
 import Prelude
 

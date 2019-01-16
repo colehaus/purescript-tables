@@ -29,6 +29,10 @@ instance showTable ::
   (Show cell, Show columnId, Show rowId) =>
   Show (Table rowId columnId cell row column) where
   show (MkTable { cells }) = "MkTable (" <> show cells <> ")"
+instance eqTable ::
+  (Eq rowId, Eq columnId, Eq cell) =>
+   Eq (Table rowId columnId cell row column) where
+  eq (MkTable t1) (MkTable t2) = t1.cells == t2.cells
 
 data Error rowId columnId cell
   = MkBadRow rowId (NonEmptyList cell)

@@ -10,12 +10,14 @@ import Data.List.NonEmpty (NonEmptyList)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe)
-import Data.Tuple (Tuple(..))
 import Data.Set (Set)
-
-import Data.Table.Internal (Table, Error) as ForReExport
+import Data.Set as Set
+import Data.Tuple (Tuple(..))
+import Data.Tuple as Tuple
 
 import Data.Table.Internal
+import Data.Table.Internal (Table, Error) as ForReExport
+
 
 cell ::
   forall rowId columnId cell row column.
@@ -45,3 +47,15 @@ mk ::
 mk mkRow mkColumn cells = table <$ valid table
   where
     table = MkTable { cells, mkRow, mkColumn }
+
+rowIds ::
+  forall cell row column rowId columnId.
+  Ord rowId =>
+  Table rowId columnId cell row column -> Set rowId
+rowIds (MkTable { cells }) = Set.map Tuple.fst <<< Map.keys $ cells
+
+columnIds ::
+  forall cell row column rowId columnId.
+  Ord columnId =>
+  Table rowId columnId cell row column -> Set columnId
+columnIds (MkTable { cells }) = Set.map Tuple.snd <<< Map.keys $ cells

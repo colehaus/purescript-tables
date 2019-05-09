@@ -3,59 +3,60 @@ module Data.Table
   , module ForReExport
   ) where
 
+import Data.Table.Internal
 import Prelude
 
 import Data.Either (Either)
+import Data.List (List)
 import Data.List.NonEmpty (NonEmptyList)
+import Data.List.NonEmpty as NonEmpty
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.Tuple (Tuple(..))
+import Data.Table.Internal (Table, MissingCell, mk) as ForReExport
+import Data.Tuple (Tuple(..), fst, snd)
 import Data.Tuple as Tuple
-
-import Data.Table.Internal
-import Data.Table.Internal (Table, Error) as ForReExport
 
 
 cell ::
-  forall rowId columnId cell row column.
+  forall rowId columnId cell.
   Ord columnId => Ord rowId =>
-  Table rowId columnId cell row column -> rowId -> columnId -> Maybe cell
+  Table rowId columnId cell -> rowId -> columnId -> Maybe cell
 cell (MkTable { cells }) rowId columnId = Tuple rowId columnId `Map.lookup` cells
 
 row ::
-  forall rowId columnId cell row column.
+  forall rowId columnId cell.
   Eq rowId =>
-  Table rowId columnId cell row column -> rowId -> Maybe row
-row (MkTable { cells, mkRow }) = vector rowId mkRow cells
+  Table rowId columnId cell -> rowId -> List cell
+row tbl = vector fst tbl
 
 column ::
-  forall rowId columnId cell row column.
+  forall rowId columnId cell.
   Eq columnId =>
-  Table rowId columnId cell row column -> columnId -> Maybe column
-column (MkTable { cells, mkColumn }) = vector columnId mkColumn cells
-
-mk ::
-  forall cell row column rowId columnId.
-  Ord rowId => Ord columnId => Ord cell =>
-  (NonEmptyList cell -> Maybe row) ->
-  (NonEmptyList cell -> Maybe column) ->
-  Map (Tuple rowId columnId) cell ->
-  Either (Set (Error rowId columnId cell)) (Table rowId columnId cell row column)
-mk mkRow mkColumn cells = table <$ valid table
-  where
-    table = MkTable { cells, mkRow, mkColumn }
+  Table rowId columnId cell -> columnId -> List cell
+column tbl = vector snd tbl
 
 rowIds ::
-  forall cell row column rowId columnId.
+  forall cell rowId columnId.
   Ord rowId =>
-  Table rowId columnId cell row column -> Set rowId
+  Table rowId columnId cell -> Set rowId
 rowIds (MkTable { cells }) = Set.map Tuple.fst <<< Map.keys $ cells
 
 columnIds ::
-  forall cell row column rowId columnId.
+  forall cell rowId columnId.
   Ord columnId =>
-  Table rowId columnId cell row column -> Set columnId
+  Table rowId columnId cell -> Set columnId
 columnIds (MkTable { cells }) = Set.map Tuple.snd <<< Map.keys $ cells
+columns ::
+  forall idr idc c.
+  Ord idc => Ord idr =>
+  Table idr idc c -> List (NonEmptyList (Tuple (Tuple idr idc) c))
+columns = vectors snd Tuple.swap
+
+rows ::
+  forall idr idc c.
+  Ord idc => Ord idr =>
+  Table idr idc c -> List (NonEmptyList (Tuple (Tuple idr idc) c))
+rows = vectors fst identity

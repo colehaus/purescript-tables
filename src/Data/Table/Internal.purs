@@ -9,100 +9,100 @@ import Data.Generic.Rep.Show (genericShow)
 import Data.List (List)
 import Data.List as List
 import Data.List.NonEmpty (NonEmptyList)
-import Data.List.NonEmpty as NEList
+import Data.List.NonEmpty as NonEmpty
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe)
-import Data.Maybe as Maybe
-import Data.Tuple (Tuple(..))
-import Data.Tuple as Tuple
 import Data.Set (Set)
 import Data.Set as Set
+import Data.Tuple (Tuple(..), fst, snd)
+import Data.Tuple as Tuple
 
-data Table rowId columnId cell row column
+data Table rowId columnId cell
   = MkTable
   { cells :: Map (Tuple rowId columnId) cell
-  , mkRow :: NonEmptyList cell -> Maybe row
-  , mkColumn :: NonEmptyList cell -> Maybe column
   }
-instance showTable ::
-  (Show cell, Show columnId, Show rowId) =>
-  Show (Table rowId columnId cell row column) where
-  show (MkTable { cells }) = "MkTable (" <> show cells <> ")"
-instance eqTable ::
+derive instance genericTable :: Generic (Table rowId columnId cell) _
+derive instance eqTable ::
   (Eq rowId, Eq columnId, Eq cell) =>
-   Eq (Table rowId columnId cell row column) where
-  eq (MkTable t1) (MkTable t2) = t1.cells == t2.cells
+  Eq (Table rowId columnId cell)
+instance showTable ::
+  (Show rowId, Show columnId, Show cell) =>
+  Show (Table rowId columnId cell) where
+  show = genericShow
 
-data Error rowId columnId cell
-  = MkBadRow rowId (NonEmptyList cell)
-  | MkBadColumn columnId (NonEmptyList cell)
-derive instance genericError :: Generic (Error rowId columnId cell) _
-derive instance eqError ::
-  (Eq cell, Eq columnId, Eq rowId) =>
-  Eq (Error rowId columnId cell)
-derive instance ordError ::
-  (Ord cell, Ord columnId, Ord rowId) =>
-  Ord (Error rowId columnId cell)
-instance showError ::
-  (Show cell, Show columnId, Show rowId) =>
-  Show (Error rowId columnId cell) where
+data MissingCell rowId columnId = MkMissingCell (Tuple rowId columnId)
+derive instance genericMissingCell :: Generic (MissingCell rowId columnId) _
+derive instance eqMissingCell ::
+  (Eq rowId, Eq columnId) =>
+  Eq (MissingCell rowId columnId)
+derive instance ordMissingCell ::
+  (Ord rowId, Ord columnId) =>
+  Ord (MissingCell rowId columnId)
+instance showMissingCell ::
+  (Show rowId, Show columnId) =>
+  Show (MissingCell rowId columnId) where
   show = genericShow
 
 valid ::
-  forall rowId columnId cell row column.
-  Ord rowId => Ord columnId => Ord cell =>
-  Table rowId columnId cell row column -> Either (Set (Error rowId columnId cell)) Unit
-valid (MkTable { cells, mkColumn, mkRow }) =
-  if List.null badColumns && List.null badRows
-  then Right unit
-  else Left <<< Set.fromFoldable $ badColumns <> badRows
+  forall rowId columnId cell.
+  Ord rowId => Ord columnId =>
+  Table rowId columnId cell -> Either (Set (MissingCell rowId columnId)) Unit
+valid (MkTable { cells }) =
+  if missingCells /= Set.empty
+  then Left (Set.map MkMissingCell missingCells)
+  else Right unit
   where
-    badColumns = bad MkBadColumn columnId mkColumn $ vectors columnId columnSort cells
-    badRows = bad MkBadRow rowId mkRow $ vectors rowId rowSort cells
-    bad ::
-      forall e ide c id v.
-      (ide -> NonEmptyList c -> e) ->
-      (Tuple id c -> ide) ->
-      (NonEmptyList c -> Maybe v) ->
-      List (NonEmptyList (Tuple id c)) ->
-      List e
-    bad mkErr proj mkVec =
-      map (\cs -> mkErr (proj <<< NEList.head $ cs) (Tuple.snd <$> cs)) <<<
-      List.filter (Maybe.isNothing <<< mkVec <<< map Tuple.snd)
+    missingCells = Set.fromFoldable combos `Set.difference` keys
+    combosSet = Set.fromFoldable combos
+    combos :: List (Tuple rowId columnId)
+    combos = do
+      rId <- Set.toUnfoldable rowIds
+      cId <- Set.toUnfoldable colIds
+      pure (Tuple rId cId)
+    rowIds = Set.map Tuple.fst keys
+    colIds = Set.map Tuple.snd keys
+    keys = Map.keys cells
+
+mk ::
+  forall cell rowId columnId.
+  Ord rowId => Ord columnId =>
+  Map (Tuple rowId columnId) cell ->
+  Either (Set (MissingCell rowId columnId)) (Table rowId columnId cell)
+mk cells = table <$ valid table
+  where
+    table = MkTable { cells }
 
 vectors ::
-  forall ide idc c id.
+  forall ide idc c rowId columnId.
   Eq ide => Ord idc =>
-  (Tuple id c -> ide) -> (Tuple id c -> idc) -> Map id c -> List (NonEmptyList (Tuple id c))
-vectors projEq projComp cells =
-  List.groupBy ((==) `on` projEq) <<<
-  List.sortBy (compare `on` projComp) <<<
+  (Tuple rowId columnId -> ide) -> (Tuple rowId columnId -> idc) ->
+  Table rowId columnId c -> List (NonEmptyList (Tuple (Tuple rowId columnId) c))
+vectors projEq projComp (MkTable { cells }) =
+  List.groupBy ((==) `on` (projEq <<< fst)) <<<
+  List.sortBy (compare `on` (projComp <<< fst)) <<<
   Map.toUnfoldable $
   cells
-
-columnId :: forall r c a. Tuple (Tuple r c) a -> c
-columnId (Tuple (Tuple _ c) _) = c
-
-columnSort :: forall r c a. Tuple (Tuple r c) a -> Tuple c r
-columnSort (Tuple id _) = Tuple.swap id
-
-rowId :: forall r c a. Tuple (Tuple r c) a -> r
-rowId (Tuple (Tuple r _) _) = r
-
-rowSort :: forall r c a. Tuple (Tuple r c) a -> Tuple r c
-rowSort (Tuple id _) = id
 
 vector ::
-  forall id vec rowId columnId cell.
+  forall id rowId columnId cell.
   Eq id =>
-  (Tuple (Tuple rowId columnId) cell -> id) ->
-  (NonEmptyList cell -> Maybe vec) ->
-  Map (Tuple rowId columnId) cell -> id -> Maybe vec
-vector proj mk cells id =
-  (mk <=< NEList.fromFoldable) <<<
+  (Tuple rowId columnId -> id) ->
+  Table rowId columnId cell -> id -> List cell
+vector proj (MkTable { cells }) id =
   map Tuple.snd <<<
-  List.filter (\c -> proj c == id) <<<
+  List.filter (\c -> proj (fst c) == id) <<<
   Map.toUnfoldable $
   cells
 
+-- | The mapping function should preserve the length of the list. If it doesn't, you'll end up with a `Left`.
+mapVectors ::
+  forall rowId columnId cell1 cell2 ide idc.
+  Eq ide => Ord idc => Ord rowId => Ord columnId =>
+  (Tuple rowId columnId -> ide) -> (Tuple rowId columnId -> idc) ->
+  (NonEmptyList cell1 -> NonEmptyList cell2) ->
+  Table rowId columnId cell1 ->
+  Either (Set (MissingCell rowId columnId)) (Table rowId columnId cell2)
+mapVectors projEq projComp f tbl = mk newCells
+  where
+    newCells = Map.fromFoldable <<< (NonEmpty.toList =<< _) <<< map (lift f) <<< vectors projEq projComp $ tbl
+    lift g col = NonEmpty.zip (fst <$> col) (g $ snd <$> col)

@@ -49,6 +49,25 @@ columnIds ::
   Ord columnId =>
   Table rowId columnId cell -> Set columnId
 columnIds (MkTable { cells }) = Set.map Tuple.snd <<< Map.keys $ cells
+
+-- | The mapping function should preserve the length of the list. If it doesn't, you'll end up with a `Left`.
+mapColumns ::
+  forall cell2 cell1 columnId rowId.
+  Ord columnId => Ord rowId =>
+  (NonEmptyList cell1 -> NonEmptyList cell2) ->
+  Table rowId columnId cell1 ->
+  Either (Set (MissingCell rowId columnId)) (Table rowId columnId cell2)
+mapColumns = mapVectors snd Tuple.swap
+
+-- | The mapping function should preserve the length of the list. If it doesn't, you'll end up with a `Left`.
+mapRows ::
+  forall cell2 cell1 columnId rowId.
+  Ord columnId => Ord rowId =>
+  (NonEmptyList cell1 -> NonEmptyList cell2) ->
+  Table rowId columnId cell1 ->
+  Either (Set (MissingCell rowId columnId)) (Table rowId columnId cell2)
+mapRows = mapVectors fst identity
+
 columns ::
   forall idr idc c.
   Ord idc => Ord idr =>

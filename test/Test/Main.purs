@@ -53,3 +53,24 @@ main = run [consoleReporter] do
         Table.row table "row2" `shouldEqual` ("cell2" : "cell1" : Nil)
         Table.column table "column1" `shouldEqual` ("cell4" : "cell2" : Nil)
         Table.column table "column2" `shouldEqual` ("cell3" : "cell1" : Nil)
+  describe "Mapping" do
+    it "can work with simple functions" do
+        let cellsBefore =
+              [ Tuple (Tuple "row1" "column1") 1
+              , Tuple (Tuple "row1" "column2") 2
+              , Tuple (Tuple "row2" "column1") 3
+              , Tuple (Tuple "row2" "column2") 4
+              ]
+            tableBefore =
+              unsafePartial $ Either.fromRight $
+              Table.mk (Map.fromFoldable cellsBefore)
+            cellsAfter =
+              [ Tuple (Tuple "row1" "column1") 2
+              , Tuple (Tuple "row1" "column2") 3
+              , Tuple (Tuple "row2" "column1") 4
+              , Tuple (Tuple "row2" "column2") 5
+              ]
+            tableAfter =
+              unsafePartial $ Either.fromRight $
+              Table.mk (Map.fromFoldable cellsAfter)
+        Table.mapColumns (map (_ + 1)) tableBefore `shouldEqual` Right tableAfter

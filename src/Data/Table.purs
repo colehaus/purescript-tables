@@ -3,22 +3,20 @@ module Data.Table
   , module ForReExport
   ) where
 
-import Data.Table.Internal
 import Prelude
 
 import Data.Either (Either)
 import Data.List (List)
 import Data.List.NonEmpty (NonEmptyList)
-import Data.List.NonEmpty as NonEmpty
-import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.Table.Internal (Table, MissingCell, mk) as ForReExport
 import Data.Tuple (Tuple(..), fst, snd)
 import Data.Tuple as Tuple
 
+import Data.Table.Internal
+import Data.Table.Internal (Table, MissingCell, mk) as ForReExport
 
 cell ::
   forall rowId columnId cell.
@@ -74,8 +72,20 @@ columns ::
   Table idr idc c -> List (NonEmptyList (Tuple (Tuple idr idc) c))
 columns = vectors snd Tuple.swap
 
+columns' ::
+  forall idr idc c.
+  Ord idc => Ord idr =>
+  Table idr idc c -> List (Tuple idc (NonEmptyList (Tuple idr c)))
+columns' = vectors' snd Tuple.swap fst
+
 rows ::
   forall idr idc c.
   Ord idc => Ord idr =>
   Table idr idc c -> List (NonEmptyList (Tuple (Tuple idr idc) c))
 rows = vectors fst identity
+
+rows' ::
+  forall idr idc c.
+  Ord idc => Ord idr =>
+  Table idr idc c -> List (Tuple idr (NonEmptyList (Tuple idc c)))
+rows' = vectors' fst identity snd

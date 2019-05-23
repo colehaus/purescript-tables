@@ -6,18 +6,19 @@ import Data.Either (Either(..))
 import Data.Function (on)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.List (List)
+import Data.List (List(..))
 import Data.List as List
-import Data.List.NonEmpty (NonEmptyList)
+import Data.List.NonEmpty (NonEmptyList(..))
 import Data.List.NonEmpty as NonEmpty
 import Data.Map (Map)
 import Data.Map as Map
+import Data.NonEmpty (NonEmpty(..))
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), fst, snd)
 import Data.Tuple as Tuple
 
-data Table rowId columnId cell
+newtype Table rowId columnId cell
   = MkTable
   { cells :: Map (Tuple rowId columnId) cell
   }
@@ -30,7 +31,7 @@ instance showTable ::
   Show (Table rowId columnId cell) where
   show = genericShow
 
-data MissingCell rowId columnId = MkMissingCell (Tuple rowId columnId)
+newtype MissingCell rowId columnId = MkMissingCell (Tuple rowId columnId)
 derive instance genericMissingCell :: Generic (MissingCell rowId columnId) _
 derive instance eqMissingCell ::
   (Eq rowId, Eq columnId) =>
@@ -82,6 +83,23 @@ vectors projEq projComp (MkTable { cells }) =
   List.sortBy (compare `on` (projComp <<< fst)) <<<
   Map.toUnfoldable $
   cells
+
+vectors' ::
+  forall ide idc idr c rowId columnId.
+  Eq ide => Ord idc =>
+  (Tuple rowId columnId -> ide) -> (Tuple rowId columnId -> idc) ->
+  (Tuple rowId columnId -> idr) ->
+  Table rowId columnId c -> List (Tuple ide (NonEmptyList (Tuple idr c)))
+vectors' projEq projComp projRest (MkTable { cells }) =
+  map liftId <<<
+  List.groupBy ((==) `on` (projEq <<< fst)) <<<
+  List.sortBy (compare `on` (projComp <<< fst)) <<<
+  Map.toUnfoldable $
+  cells
+  where
+    liftId xs@(NonEmptyList (NonEmpty (Tuple id c) _)) =
+      Tuple (projEq id) (first projRest <$> xs)
+    first f (Tuple a b) = Tuple (f a) b
 
 vector ::
   forall id rowId columnId cell.

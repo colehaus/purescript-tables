@@ -3,16 +3,14 @@ module Data.Table.Internal where
 import Prelude
 
 import Data.Either (Either(..))
-import Data.Function (on)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.List (List(..))
+import Data.List (List)
 import Data.List as List
-import Data.List.NonEmpty (NonEmptyList(..))
+import Data.List.NonEmpty (NonEmptyList)
 import Data.List.NonEmpty as NonEmpty
 import Data.Map (Map)
 import Data.Map as Map
-import Data.NonEmpty (NonEmpty(..))
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), fst, snd)
@@ -74,32 +72,32 @@ mk cells = table <$ valid table
     table = MkTable { cells }
 
 vectors ::
-  forall ide idc c rowId columnId.
-  Eq ide => Ord idc =>
-  (Tuple rowId columnId -> ide) -> (Tuple rowId columnId -> idc) ->
+  forall id c rowId columnId.
+  Ord id =>
+  (Tuple rowId columnId -> id) ->
   Table rowId columnId c -> List (NonEmptyList (Tuple (Tuple rowId columnId) c))
-vectors projEq projComp (MkTable { cells }) =
-  List.groupBy ((==) `on` (projEq <<< fst)) <<<
-  List.sortBy (compare `on` (projComp <<< fst)) <<<
-  Map.toUnfoldable $
-  cells
-
-vectors' ::
-  forall ide idc idr c rowId columnId.
-  Eq ide => Ord idc =>
-  (Tuple rowId columnId -> ide) -> (Tuple rowId columnId -> idc) ->
-  (Tuple rowId columnId -> idr) ->
-  Table rowId columnId c -> List (Tuple ide (NonEmptyList (Tuple idr c)))
-vectors' projEq projComp projRest (MkTable { cells }) =
-  map liftId <<<
-  List.groupBy ((==) `on` (projEq <<< fst)) <<<
-  List.sortBy (compare `on` (projComp <<< fst)) <<<
-  Map.toUnfoldable $
+vectors proj (MkTable { cells }) =
+  Map.values <<<
+  Map.fromFoldableWith (<>) <<< map munge <<<
+  (identity :: forall a. Array a -> Array a) <<<
+  Map.toUnfoldableUnordered $
   cells
   where
-    liftId xs@(NonEmptyList (NonEmpty (Tuple id c) _)) =
-      Tuple (projEq id) (first projRest <$> xs)
-    first f (Tuple a b) = Tuple (f a) b
+    munge cell = Tuple (proj $ fst cell) $ NonEmpty.singleton cell
+
+vectors' ::
+  forall id idr c rowId columnId.
+  Ord id =>
+  (Tuple rowId columnId -> id) -> (Tuple rowId columnId -> idr) ->
+  Table rowId columnId c -> List (Tuple id (NonEmptyList (Tuple idr c)))
+vectors' proj projR (MkTable { cells }) =
+  Map.toUnfoldable <<<
+  Map.fromFoldableWith (<>) <<< map munge <<<
+  (identity :: forall a. Array a -> Array a) <<<
+  Map.toUnfoldableUnordered $
+  cells
+  where
+    munge (Tuple id cell) = Tuple (proj id) $ NonEmpty.singleton (Tuple (projR id) cell)
 
 vector ::
   forall id rowId columnId cell.
@@ -114,13 +112,15 @@ vector proj (MkTable { cells }) id =
 
 -- | The mapping function should preserve the length of the list. If it doesn't, you'll end up with a `Left`.
 mapVectors ::
-  forall rowId columnId cell1 cell2 ide idc.
-  Eq ide => Ord idc => Ord rowId => Ord columnId =>
-  (Tuple rowId columnId -> ide) -> (Tuple rowId columnId -> idc) ->
+  forall rowId columnId cell1 cell2 id.
+  Ord id => Ord rowId => Ord columnId =>
+  (Tuple rowId columnId -> id) ->
   (NonEmptyList cell1 -> NonEmptyList cell2) ->
   Table rowId columnId cell1 ->
   Either (Set (MissingCell rowId columnId)) (Table rowId columnId cell2)
-mapVectors projEq projComp f tbl = mk newCells
+mapVectors proj f tbl = mk newCells
   where
-    newCells = Map.fromFoldable <<< (NonEmpty.toList =<< _) <<< map (lift f) <<< vectors projEq projComp $ tbl
+    newCells =
+      Map.fromFoldable <<< (NonEmpty.toList =<< _) <<<
+      map (lift f) <<< vectors proj $ tbl
     lift g col = NonEmpty.zip (fst <$> col) (g $ snd <$> col)

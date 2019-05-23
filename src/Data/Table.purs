@@ -55,7 +55,7 @@ mapColumns ::
   (NonEmptyList cell1 -> NonEmptyList cell2) ->
   Table rowId columnId cell1 ->
   Either (Set (MissingCell rowId columnId)) (Table rowId columnId cell2)
-mapColumns = mapVectors snd Tuple.swap
+mapColumns = mapVectors snd
 
 -- | The mapping function should preserve the length of the list. If it doesn't, you'll end up with a `Left`.
 mapRows ::
@@ -64,28 +64,28 @@ mapRows ::
   (NonEmptyList cell1 -> NonEmptyList cell2) ->
   Table rowId columnId cell1 ->
   Either (Set (MissingCell rowId columnId)) (Table rowId columnId cell2)
-mapRows = mapVectors fst identity
+mapRows = mapVectors fst
 
 columns ::
   forall idr idc c.
-  Ord idc => Ord idr =>
+  Ord idc =>
   Table idr idc c -> List (NonEmptyList (Tuple (Tuple idr idc) c))
-columns = vectors snd Tuple.swap
+columns = vectors snd
 
 columns' ::
   forall idr idc c.
-  Ord idc => Ord idr =>
+  Ord idc =>
   Table idr idc c -> List (Tuple idc (NonEmptyList (Tuple idr c)))
-columns' = vectors' snd Tuple.swap fst
+columns' = vectors' snd fst
 
 rows ::
   forall idr idc c.
-  Ord idc => Ord idr =>
+  Ord idr =>
   Table idr idc c -> List (NonEmptyList (Tuple (Tuple idr idc) c))
-rows = vectors fst identity
+rows = vectors fst
 
 rows' ::
   forall idr idc c.
-  Ord idc => Ord idr =>
+  Ord idr =>
   Table idr idc c -> List (Tuple idr (NonEmptyList (Tuple idc c)))
-rows' = vectors' fst identity snd
+rows' = vectors' fst snd

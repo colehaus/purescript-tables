@@ -2,23 +2,24 @@ module Data.Table.Internal where
 
 import Prelude
 
+import Data.Array as Array
 import Data.Either (Either(..))
+import Data.Foldable (foldr)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.List (List)
-import Data.List as List
-import Data.List.NonEmpty (NonEmptyList)
-import Data.List.NonEmpty as NonEmpty
-import Data.Map (Map)
-import Data.Map as Map
-import Data.Set (Set)
-import Data.Set as Set
-import Data.Tuple (Tuple(..), fst, snd)
+import Data.HashMap (HashMap)
+import Data.HashMap as HashMap
+import Data.HashSet (HashSet)
+import Data.HashSet as HashSet
+import Data.Hashable (class Hashable, hash)
+import Data.Maybe (fromJust)
+import Data.Tuple (Tuple(..), fst, uncurry)
 import Data.Tuple as Tuple
+import Partial.Unsafe (unsafePartialBecause)
 
 newtype Table rowId columnId cell
   = MkTable
-  { cells :: Map (Tuple rowId columnId) cell
+  { cells :: HashMap (Tuple rowId columnId) cell
   }
 derive instance genericTable :: Generic (Table rowId columnId cell) _
 derive instance eqTable ::
@@ -41,86 +42,109 @@ instance showMissingCell ::
   (Show rowId, Show columnId) =>
   Show (MissingCell rowId columnId) where
   show = genericShow
+instance hashableMissingCell ::
+  (Hashable rowId, Hashable columnId) =>
+  Hashable (MissingCell rowId columnId) where
+  hash (MkMissingCell t) = hash t
 
 valid ::
   forall rowId columnId cell.
-  Ord rowId => Ord columnId =>
-  Table rowId columnId cell -> Either (Set (MissingCell rowId columnId)) Unit
+  Hashable rowId => Hashable columnId =>
+  Table rowId columnId cell -> Either (HashSet (MissingCell rowId columnId)) Unit
 valid (MkTable { cells }) =
-  if missingCells /= Set.empty
-  then Left (Set.map MkMissingCell missingCells)
+  if missingCells /= HashSet.empty
+  then Left (HashSet.map MkMissingCell missingCells)
   else Right unit
   where
-    missingCells = Set.fromFoldable combos `Set.difference` keys
-    combosSet = Set.fromFoldable combos
-    combos :: List (Tuple rowId columnId)
+    missingCells = HashSet.fromArray combos `HashSet.difference` keys
+    combosSet = HashSet.fromArray combos
     combos = do
-      rId <- Set.toUnfoldable rowIds
-      cId <- Set.toUnfoldable colIds
+      rId <- HashSet.toArray $ rowIds
+      cId <- HashSet.toArray $ colIds
       pure (Tuple rId cId)
-    rowIds = Set.map Tuple.fst keys
-    colIds = Set.map Tuple.snd keys
-    keys = Map.keys cells
+    rowIds = HashSet.map Tuple.fst keys
+    colIds = HashSet.map Tuple.snd keys
+    keys = HashSet.fromArray <<< HashMap.keys $ cells
 
 mk ::
   forall cell rowId columnId.
-  Ord rowId => Ord columnId =>
-  Map (Tuple rowId columnId) cell ->
-  Either (Set (MissingCell rowId columnId)) (Table rowId columnId cell)
+  Hashable rowId => Hashable columnId =>
+  HashMap (Tuple rowId columnId) cell ->
+  Either (HashSet (MissingCell rowId columnId)) (Table rowId columnId cell)
 mk cells = table <$ valid table
   where
     table = MkTable { cells }
 
 vectors ::
-  forall id c rowId columnId.
-  Ord id =>
+  forall id cell rowId columnId.
+  Hashable id => Hashable rowId => Hashable columnId => Hashable cell =>
   (Tuple rowId columnId -> id) ->
-  Table rowId columnId c -> List (NonEmptyList (Tuple (Tuple rowId columnId) c))
+  Table rowId columnId cell -> HashSet (HashMap (Tuple rowId columnId) cell)
 vectors proj (MkTable { cells }) =
-  Map.values <<<
-  Map.fromFoldableWith (<>) <<< map munge <<<
+  HashSet.fromArray <<< HashMap.values <<<
+  unions <<< map munge <<<
   (identity :: forall a. Array a -> Array a) <<<
-  Map.toUnfoldableUnordered $
+  HashMap.toArrayBy Tuple $
   cells
   where
-    munge cell = Tuple (proj $ fst cell) $ NonEmpty.singleton cell
+    unions = foldr (HashMap.unionWith (<>)) HashMap.empty
+    munge cell = HashMap.singleton (proj $ fst cell) $ uncurry HashMap.singleton cell
 
 vectors' ::
-  forall id idr c rowId columnId.
-  Ord id =>
+  forall id idr cell rowId columnId.
+  Hashable id => Hashable idr =>
   (Tuple rowId columnId -> id) -> (Tuple rowId columnId -> idr) ->
-  Table rowId columnId c -> List (Tuple id (NonEmptyList (Tuple idr c)))
+  Table rowId columnId cell -> HashMap id (HashMap idr cell)
 vectors' proj projR (MkTable { cells }) =
-  Map.toUnfoldable <<<
-  Map.fromFoldableWith (<>) <<< map munge <<<
+  unions <<< map munge <<<
   (identity :: forall a. Array a -> Array a) <<<
-  Map.toUnfoldableUnordered $
+  HashMap.toArrayBy Tuple $
   cells
   where
-    munge (Tuple id cell) = Tuple (proj id) $ NonEmpty.singleton (Tuple (projR id) cell)
+    unions = foldr (HashMap.unionWith (<>)) HashMap.empty
+    munge (Tuple id cell) =
+      HashMap.singleton (proj id) $ HashMap.singleton (projR id) cell
 
 vector ::
-  forall id rowId columnId cell.
-  Eq id =>
+  forall id rid rowId columnId cell.
+  Eq id => Hashable rid =>
   (Tuple rowId columnId -> id) ->
-  Table rowId columnId cell -> id -> List cell
-vector proj (MkTable { cells }) id =
-  map Tuple.snd <<<
-  List.filter (\c -> proj (fst c) == id) <<<
-  Map.toUnfoldable $
+  (Tuple rowId columnId -> rid) ->
+  Table rowId columnId cell -> id -> HashMap rid cell
+vector proj projR (MkTable { cells }) id =
+  HashMap.fromArray <<< map (first projR) <<< HashMap.toArrayBy Tuple <<<
+  HashMap.filterKeys (\c -> proj c == id) $
   cells
+  where
+    first f (Tuple a b) = Tuple (f a) b
 
--- | The mapping function should preserve the length of the list. If it doesn't, you'll end up with a `Left`.
+-- | The mapping function should preserve the length of the list. If it doesn't, you'll end up
+-- with a `Left`.
 mapVectors ::
-  forall rowId columnId cell1 cell2 id.
-  Ord id => Ord rowId => Ord columnId =>
+  forall rowId columnId cell1 cell2 id idr.
+  Hashable id => Hashable rowId => Hashable columnId => Hashable cell1 => Hashable idr =>
   (Tuple rowId columnId -> id) ->
-  (NonEmptyList cell1 -> NonEmptyList cell2) ->
+  (Tuple rowId columnId -> idr) ->
+  (id -> idr -> Tuple rowId columnId) ->
+  (HashMap idr cell1 -> HashMap idr cell2) ->
   Table rowId columnId cell1 ->
-  Either (Set (MissingCell rowId columnId)) (Table rowId columnId cell2)
-mapVectors proj f tbl = mk newCells
+  Either (HashSet (MissingCell rowId columnId)) (Table rowId columnId cell2)
+mapVectors proj projR comb f tbl = mk newCells
   where
     newCells =
-      Map.fromFoldable <<< (NonEmpty.toList =<< _) <<<
-      map (lift f) <<< vectors proj $ tbl
-    lift g col = NonEmpty.zip (fst <$> col) (g $ snd <$> col)
+      HashMap.fromArray <<< join <<<
+      map (lift f) <<< Array.fromFoldable <<< vectors proj $
+      tbl
+    lift g vec =
+      map (first $ comb id) <<< HashMap.toArrayBy Tuple <<<
+      g <<<
+      HashMap.fromArray <<< map (first projR) <<< HashMap.toArrayBy Tuple $
+      vec
+      where
+        id =
+          proj <<<
+          unsafePartialBecause "Grouping guarantees non-empty on inner collection" $
+          fromJust <<< Array.head <<< HashMap.keys $
+          vec
+    first :: forall x y z. (x -> z) -> Tuple x y -> Tuple z y
+    first g (Tuple a b) = Tuple (g a) b

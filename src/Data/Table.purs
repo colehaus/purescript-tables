@@ -3,89 +3,90 @@ module Data.Table
   , module ForReExport
   ) where
 
+import Data.Table.Internal
 import Prelude
 
 import Data.Either (Either)
-import Data.List (List)
-import Data.List.NonEmpty (NonEmptyList)
-import Data.Map as Map
+import Data.HashMap (HashMap)
+import Data.HashMap as HashMap
+import Data.HashSet (HashSet)
+import Data.HashSet as HashSet
+import Data.Hashable (class Hashable)
 import Data.Maybe (Maybe)
-import Data.Set (Set)
-import Data.Set as Set
-import Data.Tuple (Tuple(..), fst, snd)
-import Data.Tuple as Tuple
-
-import Data.Table.Internal
 import Data.Table.Internal (Table, MissingCell, mk) as ForReExport
+import Data.Tuple (Tuple(..), fst, snd)
+
 
 cell ::
   forall rowId columnId cell.
-  Ord columnId => Ord rowId =>
+  Hashable columnId => Hashable rowId =>
   Table rowId columnId cell -> rowId -> columnId -> Maybe cell
-cell (MkTable { cells }) rowId columnId = Tuple rowId columnId `Map.lookup` cells
+cell (MkTable { cells }) rowId columnId = Tuple rowId columnId `HashMap.lookup` cells
 
 row ::
   forall rowId columnId cell.
-  Eq rowId =>
-  Table rowId columnId cell -> rowId -> List cell
-row tbl = vector fst tbl
+  Hashable rowId => Hashable columnId => Hashable cell =>
+  Table rowId columnId cell -> rowId -> HashMap columnId cell
+row tbl = vector fst snd tbl
 
 column ::
   forall rowId columnId cell.
-  Eq columnId =>
-  Table rowId columnId cell -> columnId -> List cell
-column tbl = vector snd tbl
+  Hashable columnId => Hashable rowId => Hashable cell =>
+  Table rowId columnId cell -> columnId -> HashMap rowId cell
+column tbl = vector snd fst tbl
 
 rowIds ::
   forall cell rowId columnId.
-  Ord rowId =>
-  Table rowId columnId cell -> Set rowId
-rowIds (MkTable { cells }) = Set.map Tuple.fst <<< Map.keys $ cells
+  Hashable rowId =>
+  Table rowId columnId cell -> HashSet rowId
+rowIds (MkTable { cells }) = HashSet.fromArray <<< map fst <<< HashMap.keys $ cells
 
 columnIds ::
   forall cell rowId columnId.
-  Ord columnId =>
-  Table rowId columnId cell -> Set columnId
-columnIds (MkTable { cells }) = Set.map Tuple.snd <<< Map.keys $ cells
+  Hashable columnId =>
+  Table rowId columnId cell -> HashSet columnId
+columnIds (MkTable { cells }) = HashSet.fromArray <<< map snd <<< HashMap.keys $ cells
 
--- | The mapping function should preserve the length of the list. If it doesn't, you'll end up with a `Left`.
+-- | The mapping function should preserve the length of the list. If it doesn't, you'll end up
+-- with a `Left`.
 mapColumns ::
   forall cell2 cell1 columnId rowId.
-  Ord columnId => Ord rowId =>
-  (NonEmptyList cell1 -> NonEmptyList cell2) ->
+  Hashable columnId => Hashable rowId => Hashable cell1 =>
+  (HashMap rowId cell1 -> HashMap rowId cell2) ->
   Table rowId columnId cell1 ->
-  Either (Set (MissingCell rowId columnId)) (Table rowId columnId cell2)
-mapColumns = mapVectors snd
+  Either (HashSet (MissingCell rowId columnId)) (Table rowId columnId cell2)
+mapColumns = mapVectors snd fst (flip Tuple)
 
--- | The mapping function should preserve the length of the list. If it doesn't, you'll end up with a `Left`.
+-- | The mapping function should preserve the length of the list. If it doesn't, you'll end up
+-- with a `Left`.
 mapRows ::
   forall cell2 cell1 columnId rowId.
-  Ord columnId => Ord rowId =>
-  (NonEmptyList cell1 -> NonEmptyList cell2) ->
+  Hashable columnId => Hashable rowId => Hashable cell1 =>
+  (HashMap columnId cell1 -> HashMap columnId cell2) ->
   Table rowId columnId cell1 ->
-  Either (Set (MissingCell rowId columnId)) (Table rowId columnId cell2)
-mapRows = mapVectors fst
+  Either (HashSet (MissingCell rowId columnId)) (Table rowId columnId cell2)
+mapRows = mapVectors fst snd Tuple
 
 columns ::
   forall idr idc c.
-  Ord idc =>
-  Table idr idc c -> List (NonEmptyList (Tuple (Tuple idr idc) c))
+  Hashable idc => Hashable idr => Hashable c =>
+  Table idr idc c -> HashSet (HashMap (Tuple idr idc) c)
 columns = vectors snd
 
 columns' ::
   forall idr idc c.
-  Ord idc =>
-  Table idr idc c -> List (Tuple idc (NonEmptyList (Tuple idr c)))
+  Hashable idc => Hashable idr =>
+  Table idr idc c -> HashMap idc (HashMap idr c)
 columns' = vectors' snd fst
 
 rows ::
-  forall idr idc c.
-  Ord idr =>
-  Table idr idc c -> List (NonEmptyList (Tuple (Tuple idr idc) c))
+  forall idr idc cell.
+  Hashable idr => Hashable idc => Hashable cell =>
+  Table idr idc cell -> HashSet (HashMap (Tuple idr idc) cell)
 rows = vectors fst
 
 rows' ::
   forall idr idc c.
-  Ord idr =>
-  Table idr idc c -> List (Tuple idr (NonEmptyList (Tuple idc c)))
+  Hashable idr => Hashable idc =>
+  Table idr idc c -> HashMap idr (HashMap idc c)
 rows' = vectors' fst snd

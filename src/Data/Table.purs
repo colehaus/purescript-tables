@@ -16,12 +16,17 @@ import Data.Maybe (Maybe)
 import Data.Table.Internal (Table, MissingCell, mk) as ForReExport
 import Data.Tuple (Tuple(..), fst, snd)
 
+rowId :: forall rowId columnId. Tuple rowId columnId -> rowId
+rowId = fst
+
+columnId :: forall rowId columnId. Tuple rowId columnId -> columnId
+columnId = snd
 
 cell ::
   forall rowId columnId cell.
   Hashable columnId => Hashable rowId =>
   Table rowId columnId cell -> rowId -> columnId -> Maybe cell
-cell (MkTable { cells }) rowId columnId = Tuple rowId columnId `HashMap.lookup` cells
+cell (MkTable { cells }) rId cId = Tuple rId cId `HashMap.lookup` cells
 
 row ::
   forall rowId columnId cell.
